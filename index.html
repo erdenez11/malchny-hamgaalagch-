@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Малчны хамгаалагч — камераар амьтан таних</title>
+<!--
+  ЗААВАР:
+  1) "ТАНЫ НЭР"-ийг өөрийн нэрээр солино (Ctrl+F → ТАНЫ НЭР). Дүгнэлтийг өөрийн үгээр засварлаж болно.
+  2) "Шууд турших" хэсэг ажиллахын тулд model/backbone.onnx ба model/lr.json хэрэгтэй (python train.py үүсгэнэ).
+  3) Камер зөвхөн https (GitHub Pages) эсвэл localhost дээр ажиллана.
+-->
+<style>
+  :root {
+    --bg: #04130d; --card: rgba(16, 40, 30, .72); --card2: rgba(22, 52, 39, .75);
+    --line: rgba(120, 255, 190, .10); --ink: #eafff4; --ink2: #9fbfb0; --ink3: #6f8f80;
+    --neon: #3dfc9f; --neon2: #1fd17f; --orange: #ff7a1a; --red: #ff4d4d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; color: var(--ink); font-family: "Segoe UI", Inter, Arial, sans-serif; line-height: 1.55;
+    background: radial-gradient(1200px 700px at 15% -10%, #0e5a3a 0%, transparent 60%),
+                radial-gradient(900px 600px at 110% 20%, #0b4630 0%, transparent 55%), var(--bg);
+    min-height: 100vh;
+  }
+  .shell { max-width: 1320px; margin: 28px auto; padding: 22px; border-radius: 28px;
+    background: linear-gradient(180deg, rgba(20,60,42,.55), rgba(6,24,16,.75));
+    border: 1px solid var(--line); box-shadow: 0 30px 80px rgba(0,0,0,.45); }
+
+  /* ---- Дээд мөр ---- */
+  .top { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+  .logo { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-size: 24px;
+    background: linear-gradient(135deg, var(--neon), var(--neon2)); color: #03140c; box-shadow: 0 0 24px rgba(61,252,159,.45); }
+  .top h1 { font-size: 1.35rem; margin: 0; }
+  .top .sub { color: var(--ink2); font-size: .86rem; }
+  .pill { margin-left: auto; padding: 9px 18px; border-radius: 999px; background: var(--card); border: 1px solid var(--line);
+    color: var(--ink2); font-size: .88rem; }
+  .pill b { color: var(--neon); }
+
+  /* ---- Карт ---- */
+  .grid { display: grid; gap: 18px; }
+  .g-main { grid-template-columns: 1.65fr 1fr; }
+  .g-4 { grid-template-columns: repeat(4, 1fr); }
+  .g-2 { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 980px) { .g-main, .g-2 { grid-template-columns: 1fr; } .g-4 { grid-template-columns: 1fr 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 20px 22px;
+    backdrop-filter: blur(10px); position: relative; overflow: hidden; }
+  .card h2 { font-size: 1.15rem; font-weight: 600; margin: 0 0 4px; }
+  .card .hint { color: var(--ink2); font-size: .86rem; margin: 0 0 14px; }
+  .card.neon { background: linear-gradient(135deg, #2df29a 0%, #14a865 55%, #0b5e3b 100%); color: #03140c; }
+  .card.neon .hint, .card.neon .k { color: #0b3d27; font-weight: 600; }
+  section.title { margin: 30px 4px 12px; font-size: 1.05rem; color: var(--ink2); letter-spacing: .04em; text-transform: uppercase; }
+
+  /* ---- Камер ---- */
+  .stage { position: relative; background: #020a06; border-radius: 18px; overflow: hidden; aspect-ratio: 16 / 10;
+    border: 3px solid rgba(61,252,159,.25); transition: border-color .2s, box-shadow .2s; }
+  .stage.ok { border-color: var(--neon); box-shadow: 0 0 30px rgba(61,252,159,.25); }
+  .stage.alarm { border-color: var(--red); box-shadow: 0 0 40px rgba(255,77,77,.45); }
+  .stage video, .stage img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  [hidden] { display: none !important; }
+  .roi { position: absolute; border: 2px dashed #ffd400; border-radius: 10px; pointer-events: none; display: none; }
+  .placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ink3); text-align: center; padding: 20px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+  button, .upload { font: inherit; font-size: .92rem; padding: 10px 18px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--card2); color: var(--ink); cursor: pointer; transition: transform .1s; }
+  button:hover, .upload:hover { transform: translateY(-1px); }
+  button.primary { background: var(--neon); color: #03140c; border: none; font-weight: 700; box-shadow: 0 0 20px rgba(61,252,159,.35); }
+  button:disabled { opacity: .45; cursor: default; transform: none; }
+  .status { font-size: .86rem; color: var(--ink2); margin-top: 10px; }
+  .err { color: var(--red); }
+
+  /* ---- Шийдвэрийн самбар ---- */
+  .gauge { position: relative; width: 220px; height: 220px; margin: 6px auto 4px; }
+  .gauge svg { width: 100%; height: 100%; transform: rotate(135deg); }
+  .gauge .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .gauge .num { font-size: 3rem; font-weight: 700; line-height: 1; }
+  .gauge .cap { color: var(--ink2); font-size: .85rem; margin-top: 4px; }
+  .label { text-align: center; font-size: 1.45rem; font-weight: 700; margin: 6px 0 2px; }
+  .label small { color: var(--ink2); font-weight: 400; font-size: .85rem; }
+  .danger { color: var(--red); font-weight: 700; }
+  .safe { color: var(--neon); font-weight: 700; }
+  .tbox { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; font-size: .9rem; color: var(--ink2); }
+  .tbox b { color: var(--ink); }
+  input[type=range] { flex: 1; accent-color: var(--neon); }
+  .row { display: grid; grid-template-columns: 80px 1fr 44px; gap: 10px; align-items: center; margin: 8px 0; font-size: .9rem; }
+  .bar { height: 8px; background: rgba(255,255,255,.07); border-radius: 6px; position: relative; overflow: hidden; }
+  .bar > span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; }
+  .meter, .pfill-hidden { display: none; }
+
+  /* ---- Үзүүлэлт ---- */
+  .stat .k { color: var(--ink2); font-size: .9rem; }
+  .stat .v { font-size: 2.6rem; font-weight: 700; line-height: 1.1; margin-top: 6px; }
+  .stat .v small { font-size: 1rem; color: var(--ink2); font-weight: 400; }
+  .dots { display: flex; gap: 4px; margin-top: 10px; }
+  .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--neon); opacity: .9; }
+  .dots i:nth-child(3n) { background: var(--orange); } .dots i:nth-child(4n) { opacity: .3; }
+
+  /* ---- Хүснэгт, текст ---- */
+  table { border-collapse: separate; border-spacing: 0 6px; width: 100%; font-size: .9rem; }
+  th { text-align: left; color: var(--ink3); font-weight: 500; padding: 4px 12px; }
+  td { background: var(--card2); padding: 9px 12px; }
+  td:first-child { border-radius: 10px 0 0 10px; } td:last-child { border-radius: 0 10px 10px 0; }
+  .tag { display: inline-block; padding: 2px 10px; border-radius: 8px; font-size: .8rem; font-weight: 600; }
+  .tag.ok { background: rgba(61,252,159,.15); color: var(--neon); } .tag.bad { background: rgba(255,77,77,.15); color: var(--red); }
+  .log { max-height: 260px; overflow-y: auto; }
+  pre { background: rgba(0,0,0,.35); color: #bfffe0; padding: 14px; border-radius: 12px; overflow-x: auto; font-size: .86rem; border: 1px solid var(--line); }
+  img.fig { width: 100%; border-radius: 14px; background: #fff; }
+  p, li { color: #cfe9dc; } ul { padding-left: 20px; }
+  .fill-me { color: #ffd400; }
+  footer { text-align: center; color: var(--ink3); font-size: .8rem; margin-top: 22px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="top">
+    <div class="logo">🛡</div>
+    <div><h1>Малчны хамгаалагч</h1>
+      <div class="sub">I.ETC320 Эрчим хүчний мэдээллийн систем ба хиймэл оюун ухаан · Гүйцэтгэсэн: <span class="fill-me">Erdene-Ochir</span></div></div>
+    <div class="pill">CNN + Logistic Regression · босго T = <b id="tval">—</b></div>
+  </div>
+
+  <!-- ================= Шууд турших ================= -->
+  <div class="grid g-main">
+    <div class="card">
+      <h2>Шууд турших</h2>
+      <p class="hint">Камер асаагаад амьтны зургийг <b>шар хайрцагт</b> харуулна уу, эсвэл зураг сонгоно уу. Тооцоо браузер дотор хийгдэнэ.</p>
+      <div class="stage" id="stage">
+        <video id="video" playsinline muted hidden></video>
+        <img id="photo" alt="" hidden>
+        <div class="roi" id="roi"></div>
+        <div class="placeholder" id="ph">Загвар ачаалж байна ...</div>
+      </div>
+      <div class="btns">
+        <button class="primary" id="btnCam" disabled>📷 Камер асаах</button>
+        <button id="btnStop" disabled>■ Зогсоох</button>
+        <label class="upload">🖼 Зураг сонгох <input type="file" id="file" accept="image/*" hidden></label>
+      </div>
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="card">
+      <h2>Шийдвэр</h2>
+      <p class="hint">P(аюул) = p<sub>чоно</sub> + p<sub>баавгай</sub> + p<sub>ирвэс</sub></p>
+      <div class="gauge">
+        <svg viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="9"
+                  stroke-dasharray="235.6 314.2" stroke-linecap="round"/>
+          <circle id="arc" cx="60" cy="60" r="50" fill="none" stroke="#3dfc9f" stroke-width="9"
+                  stroke-dasharray="0 314.2" stroke-linecap="round"/>
+          <circle id="tmark" cx="110" cy="60" r="3.5" fill="#ffd400"/>
+        </svg>
+        <div class="center"><div class="num" id="pval">0%</div><div class="cap">P(аюул)</div></div>
+      </div>
+      <div class="label" id="label">—</div>
+      <div class="tbox">T <input type="range" id="tslider" min="0.05" max="0.95" step="0.05"></div>
+      <div class="meter"><div id="pfill"></div><div id="ptick"></div></div>
+      <div class="hint" style="margin:12px 0 0">Магадлал (top 3)</div>
+      <div id="top3"></div>
+    </div>
+  </div>
+
+  <!-- ================= Үзүүлэлт ================= -->
+  <section class="title">Үр дүн (test хэсэг)</section>
+  <div class="grid g-4">
+    <div class="card stat"><div class="k">Accuracy (9 анги)</div><div class="v"><span>89.3</span><small> %</small></div><div class="dots"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+    <div class="card stat"><div class="k">Аюултай recall</div><div class="v"><span>90.7</span><small> %</small></div><div class="dots"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+    <div class="card stat"><div class="k">False alarm</div><div class="v"><span>0.5</span><small> %</small></div><div class="dots"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+    <div class="card stat neon"><div class="k">Сонгосон босго T</div><div class="v">0.45</div><div class="hint" style="margin:8px 0 0">Cross-validation-оор сонгосон</div></div>
+  </div>
+
+  <div class="grid g-2" style="margin-top:18px">
+    <div class="card">
+      <h2>Бүртгэл</h2>
+      <p class="hint">Энэ хуудсанд илэрсэн амьтад (live.py-ийн Excel log-той ижил)</p>
+      <div class="log"><table><thead><tr><th>Цаг</th><th>Амьтан</th><th>p</th><th>P(аюул)</th><th>Бүс</th></tr></thead>
+        <tbody id="logBody"><tr><td colspan="5" style="color:var(--ink3)">Одоогоор алга</td></tr></tbody></table></div>
+      <div class="btns"><button id="btnCsv">⬇ CSV татах (Excel)</button></div>
+    </div>
+    <div class="card">
+      <h2>Confusion matrix</h2>
+      <p class="hint">Мөр = жинхэнэ анги, багана = таамаг</p>
+      <img class="fig" src="confusion_matrix.png" alt="Confusion matrix">
+    </div>
+  </div>
+
+  <!-- ================= Тайлан ================= -->
+  <section class="title">Төслийн тайлбар</section>
+  <div class="grid g-2">
+    <div class="card">
+      <h2>Асуудал ба шийдэл</h2>
+      <p>Малчид чоно, ирвэсний дайралтаас болж мал алддаг. Систем камераар 9 анги амьтан таниж, махчин байх
+        магадлал босгоос давбал дохио өгч, бүх илрүүлэлтийг Excel-д бүртгэнэ.</p>
+      <table>
+        <tr><td><span class="tag ok">Аюулгүй</span></td><td>Адуу, Үхэр, Хонь, Ямаа, Тэмээ, Нохой</td></tr>
+        <tr><td><span class="tag bad">Аюултай</span></td><td>Чоно, Баавгай, Ирвэс</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Систем хэрхэн ажилладаг</h2>
+      <pre>Камер → шар хайрцаг → CNN (MobileNetV3-Small)
+     → x (D = 576 тоо) → Logistic Regression
+     → p (9 магадлал) → P(аюул) ≥ T ? → дохио</pre>
+      <ul>
+        <li><b>CNN</b>: ImageNet дээр сурсан, жин өөрчлөгдөхгүй (transfer learning)</li>
+        <li><b>LR</b>: бидний сургадаг хэсэг, W (9 × D), b (9)</li>
+        <li><b>Вэб</b>: CNN → ONNX, W, b → JSON; браузер ижил томьёогоор бодно</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Томьёо</h2>
+      <pre>z_k = w_k · x + b_k                 (k = 1..9)
+p_k = e^(z_k) / Σ_j e^(z_j)         (softmax)
+P(аюул) = p_чоно + p_баавгай + p_ирвэс ≥ T → ДОХИО</pre>
+      <p><b>Жишээ:</b> z(чоно) = 2, z(нохой) = 1, бусад = 0 → Σe<sup>z</sup> = 17.107 →
+        p(чоно) = 0.432 → P(аюул) = 0.549 ≥ 0.3 → <span class="danger">ДОХИО</span></p>
+    </div>
+    <div class="card">
+      <h2>Өгөгдөл</h2>
+      <table>
+        <tr><td>Аюулгүй</td><td>Адуу, Үхэр, Хонь, Ямаа, Тэмээ, Нохой</td></tr>
+        <tr><td>Аюултай</td><td>Чоно, Баавгай, Ирвэс</td></tr>
+        <tr><td>Хуваалт</td><td>80% сургалт (train), 20% шалгалт (test)</td></tr>
+        <tr><td>Нэмэлт</td><td>Тольдсон (flip) зураг зөвхөн сургалтад</td></tr>
+      </table>
+      <p style="font-size:.85rem;color:var(--ink3)">Эх сурвалж: Kaggle Animals-10, 15 Animal, Cats in the Wild</p>
+    </div>
+    <div class="card">
+      <h2>Дүгнэлт</h2>
+      <p>Загвар test хэсэгт 9 ангийг 89.3% зөв ангилж, аюулгүй/аюултай бүсийг 96.9% зөв ялгалаа.
+        Махчдын 90.7%-д дохио өгсөн бол малын ердөө 0.5%-ийг махчин гэж андуурсан.
+        Алдсан махчдад ирвэсийг хонь, чоныг адуу гэж таамагласан тохиолдол байсан. Эдгээр ангид
+        зураг цөөн, өнгө, орчин нь төстэй байсан нь шалтгаан байж болох юм.
+        Recall 95%-ийн зорилтод хүрээгүй тул махчдын зургийг нэмэх нь дараагийн алхам.
+        Бэлэн CNN-ийн embedding дээр энгийн Logistic Regression сургахад өндөр нарийвчлал гардгийг,
+        мөн алдааны өртөг тэнцүү бус үед accuracy-аас гадна recall-ийг хэмжих шаардлагатайг ойлголоо.</p>
+      <p>Recall-ийг accuracy-аас чухалд тавьсан: чоныг "хонь" гэж алдах нь эсрэгээсээ хамаагүй аюултай.</p>
+    </div>
+    <div class="card">
+      <h2>Хязгаарлалт ба цаашдын ажил</h2>
+      <ul>
+        <li>Нэг кадрт нэг амьтан (detection байхгүй)</li>
+        <li>Шөнийн зураг сургалтад байхгүй</li>
+        <li>Браузер зургийг Python-оос арай өөрөөр багасгадаг тул магадлал бага зэрэг зөрж болно</li>
+        <li>Махчдын (ялангуяа ирвэс, чоно) зургийг нэмж recall-ийг 95%-д хүргэх</li>
+      </ul>
+    </div>
+  </div>
+  <footer>Малчны хамгаалагч · CNN embedding → Logistic Regression · бүх тооцоо таны браузерт</footer>
+</div>
+
+<!-- onnxruntime-web: CNN-ийг браузерт ажиллуулах сан -->
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+<script>
+"use strict";
+// ======================= ТОХИРГОО (live.py-тай ижил) =======================
+const MODEL_URL = "model/backbone.onnx";
+const LR_URL = "model/lr.json";
+const EVERY_MS = 250;      // хэдэн мс тутам таних
+const SMOOTH = 5;          // сүүлийн хэдэн таамгийн p-г дундажлах
+const UNKNOWN_P = 0.5;     // max p үүнээс бага бол "Тодорхойгүй"
+const CONFIRM_N = 3;       // ижил анги дараалан хэдэн удаа гарч байж тоологдох
+const COOLDOWN = 3000;     // ижил ангийг дахин тоолохгүй хугацаа (мс)
+const HYSTERESIS = 0.05;   // дохио унтрах босго = T − 0.05
+// ===========================================================================
+
+const $ = (id) => document.getElementById(id);
+const canvas = document.createElement("canvas");
+canvas.width = canvas.height = 224;
+const ctx = canvas.getContext("2d", { willReadFrequently: true });
+let session = null, LR = null, T = 0.5, stream = null, timer = null, busy = false;
+let hist = [], recent = [], alarm = false, lastSeen = {}, log = [], audio = null;
+
+// ---- Томьёо ----
+/** z_k = w_k · x + b_k */
+function logits(x) { return LR.W.map((w, k) => w.reduce((s, wi, i) => s + wi * x[i], 0) + LR.b[k]); }
+/** p_k = e^{z_k − max z} / Σ e^{z_j − max z} */
+function softmax(z) { const m = Math.max(...z); const e = z.map(v => Math.exp(v - m)); const s = e.reduce((a, c) => a + c, 0); return e.map(v => v / s); }
+/** P(аюул) = махчдын p-ийн нийлбэр */
+const dangerProb = (p) => p.reduce((s, v, k) => s + (LR.danger[k] ? v : 0), 0);
+
+// ---- Зураг -> тензор (torchvision: Resize 256, CenterCrop 224, Normalize-тай ижил) ----
+function toTensor(src, w, h, frac, flip) {
+  const side = Math.min(w, h) * frac;          // төвийн дөрвөлжин (шар хайрцаг)
+  const c = side * 224 / 256;                  // CenterCrop 224 / Resize 256
+  ctx.save();
+  if (flip) { ctx.translate(224, 0); ctx.scale(-1, 1); }
+  ctx.drawImage(src, (w - c) / 2, (h - c) / 2, c, c, 0, 0, 224, 224);
+  ctx.restore();
+  const d = ctx.getImageData(0, 0, 224, 224).data, n = 224 * 224, f = new Float32Array(3 * n);
+  for (let i = 0; i < n; i++)
+    for (let ch = 0; ch < 3; ch++) f[ch * n + i] = (d[4 * i + ch] / 255 - LR.mean[ch]) / LR.std[ch];
+  return new ort.Tensor("float32", f, [1, 3, 224, 224]);
+}
+
+/** Нэг кадр -> p (9). TTA: эх + тольдсон кадрын p-ийн дундаж (live.py-тай ижил) */
+async function predict(src, w, h, frac) {
+  const ps = [];
+  for (const flip of [false, true]) {
+    const out = await session.run({ input: toTensor(src, w, h, frac, flip) });
+    const e = Array.from(out.embedding.data);
+    const norm = Math.sqrt(e.reduce((a, v) => a + v * v, 0));
+    ps.push(softmax(logits(e.map(v => v / norm))));   // x = e / ||e||
+  }
+  return ps[0].map((v, k) => (v + ps[1][k]) / 2);
+}
+
+// ---- Дэлгэцэнд харуулах ----
+function show(p) {
+  const pd = dangerProb(p), k = p.indexOf(Math.max(...p));
+  const name = p[k] >= UNKNOWN_P ? LR.classes[k] : "unknown";
+  alarm = pd >= (alarm ? T - HYSTERESIS : T);
+  $("stage").className = "stage " + (alarm ? "alarm" : "ok");
+  $("label").innerHTML = (alarm ? '<span class="danger">⚠ АЮУЛТАЙ! </span>' : "") +
+    (name === "unknown" ? "Тодорхойгүй" : `${LR.mn[k]} <small>(${name})</small>`);
+  const arc = $("arc"); arc.setAttribute("stroke-dasharray", `${235.6 * pd} 314.2`);
+  arc.setAttribute("stroke", alarm ? "#ff4d4d" : (pd >= T * 0.6 ? "#ff7a1a" : "#3dfc9f"));
+  $("pfill").style.width = `${100 * pd}%`;
+  
+  $("pval").textContent = `${(100 * pd).toFixed(0)}%`;
+  $("top3").innerHTML = p.map((v, i) => i).sort((a, b) => p[b] - p[a]).slice(0, 3).map(i =>
+    `<div class="row"><span>${LR.mn[i]}</span><div class="bar"><span style="width:${100 * p[i]}%;background:${LR.danger[i] ? "#ff4d4d" : "#3dfc9f"}"></span></div><span>${(100 * p[i]).toFixed(0)}%</span></div>`).join("");
+  return { name, k, pd };
+}
+
+function addLog(cls, prob, pd) {
+  const now = new Date();
+  log.unshift({ time: now.toLocaleTimeString(), cls, mn: LR.mn[LR.classes.indexOf(cls)], prob, pd,
+                zone: LR.danger[LR.classes.indexOf(cls)] ? "Аюултай" : "Аюулгүй" });
+  $("logBody").innerHTML = log.map(r => `<tr><td>${r.time}</td><td>${r.mn} (${r.cls})</td><td>${(100 * r.prob).toFixed(0)}%</td><td>${(100 * r.pd).toFixed(0)}%</td><td><span class="tag ${r.zone === "Аюултай" ? "bad" : "ok"}">${r.zone}</span></td></tr>`).join("");
+}
+
+function beep() {
+  if (!audio) return;
+  const o = audio.createOscillator(), g = audio.createGain();
+  o.frequency.value = 1500; g.gain.value = 0.15; o.connect(g); g.connect(audio.destination);
+  o.start(); o.stop(audio.currentTime + 0.2);
+}
+
+// ---- Камерын давталт ----
+async function tick() {
+  const v = $("video");
+  if (busy || !v.videoWidth) return;
+  busy = true;
+  try {
+    hist.push(await predict(v, v.videoWidth, v.videoHeight, LR.roi_frac));
+    if (hist.length > SMOOTH) hist.shift();
+    const p = hist[0].map((_, k) => hist.reduce((s, h) => s + h[k], 0) / hist.length);
+    const { name, k, pd } = show(p);
+    recent.push(name); if (recent.length > CONFIRM_N) recent.shift();
+    const now = Date.now();
+    const stable = recent.length === CONFIRM_N && recent.every(r => r === name);
+    if (name !== "unknown" && stable && now - (lastSeen[name] || 0) > COOLDOWN) addLog(name, p[k], pd);
+    if (name !== "unknown" && stable) lastSeen[name] = now;
+    if (alarm && now - (lastSeen.__beep || 0) > 1500) { beep(); lastSeen.__beep = now; }
+  } catch (e) { $("status").innerHTML = `<span class="err">Алдаа: ${e.message}</span>`; }
+  busy = false;
+}
+
+function placeRoi() {
+  const v = $("video"), st = $("stage"), r = $("roi");
+  if (!v.videoWidth) return;
+  const W = st.clientWidth, H = st.clientHeight, s = Math.min(W / v.videoWidth, H / v.videoHeight);
+  const vw = v.videoWidth * s, vh = v.videoHeight * s, side = Math.min(vw, vh) * LR.roi_frac;
+  Object.assign(r.style, { display: "block", width: side + "px", height: side + "px",
+    left: (W - side) / 2 + "px", top: (H - side) / 2 + "px" });
+}
+
+$("btnCam").onclick = async () => {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+    const v = $("video");
+    v.srcObject = stream; await v.play();
+    v.hidden = false; $("photo").hidden = true; $("ph").style.display = "none";
+    hist = []; recent = [];
+    placeRoi();
+    timer = setInterval(tick, EVERY_MS);
+    $("btnCam").disabled = true; $("btnStop").disabled = false;
+    $("status").textContent = "Камер ажиллаж байна. Амьтныг шар хайрцагт харуулна уу.";
+  } catch (e) {
+    $("status").innerHTML = `<span class="err">Камер нээгдсэнгүй: ${e.message}. Хуудас https эсвэл localhost дээр байх ёстой, камерын зөвшөөрөл өгнө үү.</span>`;
+  }
+};
+
+function stopCam() {
+  clearInterval(timer); timer = null;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; $("roi").style.display = "none";
+  $("btnCam").disabled = !session; $("btnStop").disabled = true;
+}
+$("btnStop").onclick = () => { stopCam(); $("status").textContent = "Камер зогслоо."; };
+
+$("file").onchange = (ev) => {
+  const f = ev.target.files[0]; if (!f || !session) return;
+  stopCam();
+  const img = $("photo");
+  img.onload = async () => {
+    img.hidden = false; $("video").hidden = true; $("ph").style.display = "none";
+    $("status").textContent = "Тооцоолж байна ...";
+    const p = await predict(img, img.naturalWidth, img.naturalHeight, 1.0);   // зураг: бүтнээр (сургалттай ижил)
+    alarm = false;
+    const { name, k, pd } = show(p);
+    if (name !== "unknown") addLog(name, p[k], pd);
+    $("status").textContent = `Зураг: ${f.name}`;
+  };
+  img.src = URL.createObjectURL(f);
+};
+
+$("tslider").oninput = (e) => {
+  T = +e.target.value; $("tval").textContent = T.toFixed(2);
+  const a = T * 1.5 * Math.PI;                       // 270° нумын дагуух T-ийн байрлал
+  $("tmark").setAttribute("cx", 60 + 50 * Math.cos(a)); $("tmark").setAttribute("cy", 60 + 50 * Math.sin(a));
+};
+
+$("btnCsv").onclick = () => {
+  const rows = [["Цаг", "Амьтан", "Монгол нэр", "Магадлал %", "P(аюултай) %", "Бүс"],
+    ...log.slice().reverse().map(r => [r.time, r.cls, r.mn, (100 * r.prob).toFixed(1), (100 * r.pd).toFixed(1), r.zone])];
+  const blob = new Blob(["﻿" + rows.map(r => r.join(",")).join("\n")], { type: "text/csv" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "log.csv"; a.click();
+};
+window.addEventListener("resize", placeRoi);
+
+// ---- Эхлэх: загвар ачаалах ----
+(async () => {
+  try {
+    if (typeof ort === "undefined") throw new Error("onnxruntime-web ачаалагдсангүй (интернет холболтоо шалгана уу)");
+    ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
+    LR = await (await fetch(LR_URL)).json();
+    session = await ort.InferenceSession.create(MODEL_URL, { executionProviders: ["wasm"] });
+    T = LR.T;
+    $("tslider").value = T; $("tslider").oninput({ target: $("tslider") });
+    $("btnCam").disabled = false;
+    $("ph").textContent = "Камер асаах эсвэл зураг сонгох";
+    $("status").textContent = `Загвар бэлэн: ${LR.classes.length} анги, D = ${LR.D}, T = ${T}`;
+  } catch (e) {
+    $("ph").innerHTML = `<span class="err">Загвар ачаалагдсангүй.<br>${e.message}<br>model/backbone.onnx ба model/lr.json байгаа эсэхийг шалгана уу (python train.py үүсгэнэ).</span>`;
+  }
+})();
+</script>
+</body>
+</html>

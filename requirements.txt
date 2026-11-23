@@ -1,0 +1,10 @@
+torch
+torchvision
+onnx
+scikit-learn
+opencv-python
+openpyxl
+joblib
+matplotlib
+pillow
+numpy
