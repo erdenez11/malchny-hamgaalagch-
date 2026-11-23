@@ -116,7 +116,7 @@
   <div class="top">
     <div class="logo">🛡</div>
     <div><h1>Малчны хамгаалагч</h1>
-      <div class="sub">I.ETC320 Эрчим хүчний мэдээллийн систем ба хиймэл оюун ухаан · Гүйцэтгэсэн: <span class="fill-me">Erdene-Ochir</span></div></div>
+      <div class="sub">I.ETC320 Эрчим хүчний мэдээллийн систем ба хиймэл оюун ухаан · Гүйцэтгэсэн: <span class="fill-me">ТАНЫ НЭР</span></div></div>
     <div class="pill">CNN + Logistic Regression · босго T = <b id="tval">—</b></div>
   </div>
 
@@ -172,10 +172,12 @@
   <div class="grid g-2" style="margin-top:18px">
     <div class="card">
       <h2>Бүртгэл</h2>
-      <p class="hint">Энэ хуудсанд илэрсэн амьтад (live.py-ийн Excel log-той ижил)</p>
+      <p class="hint">Илэрсэн амьтан бүр Google Sheets-д автоматаар бичигдэнэ (live.py-ийн Excel log-той ижил)</p>
       <div class="log"><table><thead><tr><th>Цаг</th><th>Амьтан</th><th>p</th><th>P(аюул)</th><th>Бүс</th></tr></thead>
         <tbody id="logBody"><tr><td colspan="5" style="color:var(--ink3)">Одоогоор алга</td></tr></tbody></table></div>
-      <div class="btns"><button id="btnCsv">⬇ CSV татах (Excel)</button></div>
+      <div class="btns"><button id="btnCsv">⬇ CSV татах (Excel)</button>
+        <button id="btnSheet" hidden>📊 Google Sheet нээх</button></div>
+      <div class="status" id="sheetStatus"></div>
     </div>
     <div class="card">
       <h2>Confusion matrix</h2>
@@ -262,6 +264,10 @@ const UNKNOWN_P = 0.5;     // max p үүнээс бага бол "Тодорхо
 const CONFIRM_N = 3;       // ижил анги дараалан хэдэн удаа гарч байж тоологдох
 const COOLDOWN = 3000;     // ижил ангийг дахин тоолохгүй хугацаа (мс)
 const HYSTERESIS = 0.05;   // дохио унтрах босго = T − 0.05
+// ---- Google Sheets (Code.gs-ийг Web App болгон Deploy хийгээд энд бичнэ) ----
+const SHEETS_URL = "https://script.google.com/macros/s/AKfycbzg779mfNlK8j32K8okkT0Y6BVu4tFokBL-dhFKNE779fwsFf1S78IDw5Q1-257JAEQ/exec";      // жишээ: "https://script.google.com/macros/s/XXXX/exec"
+const SHEETS_TOKEN = "20261123";    // Code.gs-ийн API_TOKEN-тэй ЯГ ижил
+const SHEET_VIEW_URL = "https://docs.google.com/spreadsheets/d/1GB-HX990dlsFmoe5SUweK72opwriCgnssvndE6wdHsk/edit";  // Google Sheet-ийн холбоос (Share -> Anyone with the link -> Viewer)
 // ===========================================================================
 
 const $ = (id) => document.getElementById(id);
@@ -323,7 +329,19 @@ function show(p) {
   return { name, k, pd };
 }
 
-function addLog(cls, prob, pd) {
+let sentOk = 0;
+/** Илрүүлэлтийг Google Sheets руу илгээнэ: вэб -> GET -> Apps Script doGet -> appendRow */
+function sendToSheet(cls, prob, pd, reason) {
+  if (!SHEETS_URL) return;
+  const q = new URLSearchParams({ token: SHEETS_TOKEN, animal: cls,
+    prob: (100 * prob).toFixed(1), pd: (100 * pd).toFixed(1), reason });
+  fetch(`${SHEETS_URL}?${q}`, { mode: "no-cors" })        // хариуг уншихгүй (CORS), зөвхөн илгээнэ
+    .then(() => { sentOk++; $("sheetStatus").textContent = `Google Sheets: ${sentOk} мөр илгээсэн ✓`; })
+    .catch(e => { $("sheetStatus").innerHTML = `<span class="err">Google Sheets руу илгээж чадсангүй: ${e.message}</span>`; });
+}
+
+function addLog(cls, prob, pd, reason = "камер") {
+  sendToSheet(cls, prob, pd, reason);
   const now = new Date();
   log.unshift({ time: now.toLocaleTimeString(), cls, mn: LR.mn[LR.classes.indexOf(cls)], prob, pd,
                 zone: LR.danger[LR.classes.indexOf(cls)] ? "Аюултай" : "Аюулгүй" });
@@ -401,7 +419,7 @@ $("file").onchange = (ev) => {
     const p = await predict(img, img.naturalWidth, img.naturalHeight, 1.0);   // зураг: бүтнээр (сургалттай ижил)
     alarm = false;
     const { name, k, pd } = show(p);
-    if (name !== "unknown") addLog(name, p[k], pd);
+    if (name !== "unknown") addLog(name, p[k], pd, "зураг");
     $("status").textContent = `Зураг: ${f.name}`;
   };
   img.src = URL.createObjectURL(f);
@@ -420,6 +438,8 @@ $("btnCsv").onclick = () => {
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "log.csv"; a.click();
 };
 window.addEventListener("resize", placeRoi);
+if (SHEET_VIEW_URL) { $("btnSheet").hidden = false; $("btnSheet").onclick = () => window.open(SHEET_VIEW_URL, "_blank"); }
+$("sheetStatus").textContent = SHEETS_URL ? "Google Sheets: холбогдсон, илрүүлэлт хүлээж байна" : "Google Sheets: тохируулаагүй (SHEETS_URL хоосон)";
 
 // ---- Эхлэх: загвар ачаалах ----
 (async () => {
